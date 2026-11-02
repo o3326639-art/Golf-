@@ -1,0 +1,184 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- สร้างหน้าต่างหลัก (Window)
+local Window = Rayfield:CreateWindow({
+   Name = "Mobile Script Hub - Rainbow ESP",
+   LoadingTitle = "กำลังโหลดระบบสีรุ้ง...",
+   LoadingSubtitle = "โดย คุณเอง",
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = "MyScriptHub",
+      FileName = "Config"
+   }
+})
+
+-- สร้างหมวดหมู่ (Tab)
+local Tab = Window:CreateTab("ระบบช่วยเล่น", 4483362458)
+
+-- ตัวแปรควบคุม
+local espEnabled = false
+local aimbotEnabled = false
+local fovToggle = false
+local fovRadius = 100
+
+-- สร้างวงกลม FOV
+local FOVCircle = nil
+pcall(function()
+   FOVCircle = Drawing.new("Circle")
+   FOVCircle.Visible = false
+   FOVCircle.Filled = false
+   FOVCircle.Thickness = 2
+   FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+   FOVCircle.Radius = fovRadius
+   FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+end)
+
+-- 1. ฟังก์ชันมองทะลุ (Player ESP สีรุ้ง)
+Tab:CreateToggle({
+   Name = "มองทะลุตัวผู้เล่นสีรุ้ง (Rainbow ESP)",
+   CurrentValue = false,
+   Flag = "ESP_Toggle",
+   Callback = function(Value)
+      espEnabled = Value
+      -- ถ้าปิด ให้ลบ Highlight ออกทั้งหมดทันที
+      if not espEnabled then
+         for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character then
+               local highlight = player.Character:FindFirstChild("RainbowESPHighlight")
+               if highlight then
+                  highlight:Destroy()
+               end
+            end
+         end
+      end
+   end,
+})
+
+-- 2. ฟังก์ชันเปิด/ปิด วงกลม FOV
+Tab:CreateToggle({
+   Name = "แสดงวงกลมล็อกเป้า (FOV Circle)",
+   CurrentValue = false,
+   Flag = "FOV_Toggle",
+   Callback = function(Value)
+      fovToggle = Value
+      if FOVCircle then
+         FOVCircle.Visible = Value
+      end
+   end,
+})
+
+-- 3. ปรับขนาดความกว้างของวงกลม (Slider)
+Tab:CreateSlider({
+   Name = "ความกว้างวงกลม (FOV Size)",
+   Range = {50, 300},
+   Increment = 5,
+   CurrentValue = 100,
+   Flag = "FOV_Size",
+   Callback = function(Value)
+      fovRadius = Value
+      if FOVCircle then
+         FOVCircle.Radius = Value
+      end
+   end,
+})
+
+-- 4. ฟังก์ชันล็อกเป้าอัตโนมัติ (Aimbot)
+Tab:CreateToggle({
+   Name = "ล็อกเป้าอัตโนมัติ (Aimbot)",
+   CurrentValue = false,
+   Flag = "Aimbot_Toggle",
+   Callback = function(Value)
+      aimbotEnabled = Value
+   end,
+})
+
+-- ฟังก์ชันเช็คกำแพง (Raycast)
+local function isVisible(targetPart)
+   local origin = Camera.CFrame.Position
+   local direction = (targetPart.Position - origin)
+   
+   local raycastParams = RaycastParams.new()
+   raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+   raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
+   raycastParams.IgnoreWater = true
+   
+   local result = workspace:Raycast(origin, direction, raycastParams)
+   if result then
+      return false
+   else
+      return true
+   end
+end
+
+-- ลูปการทำงานเบื้องหลัง (จัดการทั้ง ESP สีรุ้ง, วงกลม และ Aimbot)
+RunService.RenderStepped:Connect(function()
+   -- อัปเดตตำแหน่งวงกลม
+   if FOVCircle then
+      FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+   end
+   
+   -- ระบบ ESP สีรุ้ง (ทำงานตลอดเวลา แก้ปัญหาตายแล้วหาย)
+   if espEnabled then
+      local hue = tick() % 5 / 5 -- คำนวณค่าสีรุ้งเปลี่ยนไปเรื่อยๆ ตามเวลา
+      local rainbowColor = Color3.fromHSV(hue, 1, 1)
+      
+      for _, player in ipairs(Players:GetPlayers()) do
+         if player ~= LocalPlayer and player.Character then
+            local char = player.Character
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            
+            if humanoid and humanoid.Health > 0 then
+               local highlight = char:FindFirstChild("RainbowESPHighlight")
+               if not highlight then
+                  highlight = Instance.new("Highlight")
+                  highlight.Name = "RainbowESPHighlight"
+                  highlight.Adornee = char
+                  highlight.FillTransparency = 0.5
+                  highlight.OutlineTransparency = 0
+                  highlight.Parent = char
+               end
+               -- อัปเดตสีรุ้งแบบเรียลไทม์
+               highlight.FillColor = rainbowColor
+               highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+            end
+         end
+      end
+   end
+   
+   -- ระบบ Aimbot
+   if aimbotEnabled then
+      local closestPlayer = nil
+      local shortestDistance = fovRadius
+      
+      for _, player in ipairs(Players:GetPlayers()) do
+         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+               local targetPart = player.Character.HumanoidRootPart
+               local screenPoint, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+               
+               if onScreen and isVisible(targetPart) then
+                  local mousePos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+                  local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - mousePos).Magnitude
+                  
+                  if distance < shortestDistance then
+                     shortestDistance = distance
+                     closestPlayer = targetPart
+                  end
+               end
+            end
+         end
+      end
+      
+      if closestPlayer then
+         Camera.CFrame = CFrame.new(Camera.CFrame.Position, closestPlayer.Position)
+      end
+   end
+end)
+
+Rayfield:LoadConfiguration()
